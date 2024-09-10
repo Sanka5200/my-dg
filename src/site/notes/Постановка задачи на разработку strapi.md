@@ -2,7 +2,7 @@
 {"dg-publish":true,"permalink":"/postanovka-zadachi-na-razrabotku-strapi/","tags":["gardenEntry"],"noteIcon":""}
 ---
 
-## Задание 1. Постановка задачи на разработку strapi
+## Постановка задачи на разработку strapi
 
 ---
 
